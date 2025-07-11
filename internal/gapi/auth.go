@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +84,28 @@ func removeCharacters(input string, characters string) string {
 	return strings.Map(filter, input)
 }
 
+// ToDo:
+// Function that gets the top row of a spreadsheet. Validates that is has the 5 values in it. [Date, Description, Amount, Paid By, Split Between]
+// Throw error if sheet is not to the desired specification.
+
+func validateSheetFields(valueRange *sheets.ValueRange) bool {
+	// Harded coded values for now
+	requireFields := []string{"Date", "Description", "Amount", "Paid By", "Split Between"}
+
+	firstRow := valueRange.Values[0]
+	slog.Info(fmt.Sprintf("First Row in sheet: %+v\n", firstRow))
+
+	for _, value := range firstRow {
+		if !slices.Contains(requireFields, value.(string)) {
+			log_string := fmt.Sprintf("%q is not an expected field", value)
+			slog.Error(log_string)
+			return false
+		}
+	}
+	slog.Info("Validation successful")
+	return true
+}
+
 func ReadSheed() {
 	ctx := context.Background()
 	// Initialize the Sheets service
@@ -98,16 +122,14 @@ func ReadSheed() {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
 	}
 
-	// ToDo:
-	// Function that gets the top row of a spreadsheet. Validates that is has the 5 values in it. [Date, Description, Amount, Paid By, Split Between]
-	// Throw error if sheet is not to the desired specification.
-
 	// Process the data
 	if len(resp.Values) == 0 {
-		fmt.Println("No data found.")
+		slog.Error("No data found.")
+	} else if !validateSheetFields(resp) {
+		slog.Error("Sheet Validation Failed")
 	} else {
-
-		for _, row := range resp.Values {
+		// Loop through the sheet starting from the second row
+		for _, row := range resp.Values[1:] {
 			var name string
 			var cost float32
 			for i, value := range row {
