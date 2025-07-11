@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
-	"owe-flow/gapi"
+	"log/slog"
+	"owe-flow/internal/gapi"
 )
 
 func main() {
-	fmt.Println("Hello World")
+	slog.Info("Running Owe-Flow")
 	gapi.ReadSheed()
 }
