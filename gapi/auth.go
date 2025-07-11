@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
 	"time"
 
 	"google.golang.org/api/option"
@@ -23,9 +22,11 @@ func getEnvVar(e string) string {
 	return ""
 }
 
-var Jfile = getEnvVar("SVC_PATH")
-var spreadsheetId = getEnvVar("GSHEET")
-var people = make(map[string]float32)
+var (
+	Jfile         = getEnvVar("SVC_PATH")
+	spreadsheetId = getEnvVar("GSHEET")
+	people        = make(map[string]float32)
+)
 
 // Function to read the service account json cred file
 type SVCaccountKey struct {
@@ -58,7 +59,6 @@ func ListSheets() {
 	// Example: List projects
 	sheets := client.Spreadsheets
 	fmt.Println(sheets)
-
 }
 
 type Person struct {
@@ -83,7 +83,6 @@ func removeCharacters(input string, characters string) string {
 }
 
 func ReadSheed() {
-
 	ctx := context.Background()
 	// Initialize the Sheets service
 	srv, err := sheets.NewService(ctx, option.WithCredentialsFile(Jfile), option.WithScopes(sheets.SpreadsheetsScope))
@@ -98,6 +97,10 @@ func ReadSheed() {
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet. %v", err)
 	}
+
+	// ToDo:
+	// Function that gets the top row of a spreadsheet. Validates that is has the 5 values in it. [Date, Description, Amount, Paid By, Split Between]
+	// Throw error if sheet is not to the desired specification.
 
 	// Process the data
 	if len(resp.Values) == 0 {
