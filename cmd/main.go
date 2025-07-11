@@ -1,11 +1,7 @@
 package main
 
-import (
-	"fmt"
-	"owe-flow/gapi"
-)
+import "fmt"
 
 func main() {
 	fmt.Println("Hello World")
-	gapi.ReadSheed()
 }
