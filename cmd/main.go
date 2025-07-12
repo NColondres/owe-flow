@@ -8,5 +8,4 @@ import (
 func main() {
 	slog.Info("Running Owe-Flow")
 	gapi.ReadSheed()
-	// THIS SHOULD NOT MAKE IT TO THE MAIN BRANCH test 2
 }
