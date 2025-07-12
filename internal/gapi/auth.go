@@ -6,6 +6,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,11 +25,21 @@ func getEnvVar(e string) string {
 	return ""
 }
 
+// Harded coded values for now
 var (
-	Jfile         = getEnvVar("SVC_PATH")
-	spreadsheetId = getEnvVar("GSHEET")
-	people        = make(map[string]float32)
+	Jfile          = getEnvVar("SVC_PATH")
+	spreadsheetId  = getEnvVar("GSHEET")
+	people         = make(map[string]float32)
+	requiredFields = []string{"Date", "Description", "Amount", "Paid By", "Split Between"}
 )
+
+type Record struct {
+	Date         time.Time
+	Description  string
+	Amount       float32
+	PaidBy       string
+	SplitBetween []string
+}
 
 // Function to read the service account json cred file
 type SVCaccountKey struct {
@@ -84,19 +95,15 @@ func removeCharacters(input string, characters string) string {
 	return strings.Map(filter, input)
 }
 
-// ToDo:
 // Function that gets the top row of a spreadsheet. Validates that is has the 5 values in it. [Date, Description, Amount, Paid By, Split Between]
 // Throw error if sheet is not to the desired specification.
 
 func validateSheetFields(valueRange *sheets.ValueRange) bool {
-	// Harded coded values for now
-	requireFields := []string{"Date", "Description", "Amount", "Paid By", "Split Between"}
-
 	firstRow := valueRange.Values[0]
 	slog.Info(fmt.Sprintf("First Row in sheet: %+v\n", firstRow))
 
 	for _, value := range firstRow {
-		if !slices.Contains(requireFields, value.(string)) {
+		if !slices.Contains(requiredFields, value.(string)) {
 			log_string := fmt.Sprintf("%q is not an expected field", value)
 			slog.Error(log_string)
 			return false
@@ -104,6 +111,19 @@ func validateSheetFields(valueRange *sheets.ValueRange) bool {
 	}
 	slog.Info("Validation successful")
 	return true
+}
+
+// This function will take the first row and return a mapping of the requiredFields
+// and the position (index) it is in.
+func getSheetFieldsMapping(valueRange *sheets.ValueRange) map[string]int {
+	fieldMapping := map[string]int{}
+
+	firstRow := valueRange.Values[0]
+
+	for index, value := range firstRow {
+		fieldMapping[value.(string)] = index
+	}
+	return fieldMapping
 }
 
 func ReadSheed() {
@@ -128,29 +148,40 @@ func ReadSheed() {
 	} else if !validateSheetFields(resp) {
 		slog.Error("Sheet Validation Failed")
 	} else {
+
+		topRowFields := getSheetFieldsMapping(resp)
+		slog.Info(fmt.Sprintf("Indexes of the sheet's fields: %v\n", topRowFields))
 		// Loop through the sheet starting from the second row
-		for _, row := range resp.Values[1:] {
-			var name string
-			var cost float32
+		for i, row := range resp.Values[1:] {
+			record := Record{}
 			for i, value := range row {
 				switch v := value.(type) {
 				case string:
-					if i == 2 {
+					if i == topRowFields["Amount"] {
 						newstr := removeCharacters(v, "$")
 						if s, err := strconv.ParseFloat(newstr, 32); err == nil {
-							cost = float32(s)
+							record.Amount = float32(s)
 						}
 					}
-					if i == 1 {
-						name = v
+					if i == topRowFields["Paid By"] {
+						record.PaidBy = v
 					}
+
+					if i == topRowFields["Split Between"] {
+						record.SplitBetween = strings.Split(v, ",")
+					}
+
+					if i == topRowFields["Date"] {
+						record.Date, _ = time.Parse("1/2/2006", v)
+					}
+
 				case float64:
-					if i == 2 {
-						cost = float32(v)
+					if i == topRowFields["Amount"] {
+						record.Amount = float32(v)
 					}
 				case float32:
-					if i == 2 {
-						cost = v
+					if i == topRowFields["Amount"] {
+						record.Amount = v
 					}
 				case bool:
 					fmt.Println("Boolean:", v)
@@ -159,14 +190,15 @@ func ReadSheed() {
 				default:
 					fmt.Println("Unknown type:", v)
 				}
-				if name != "" && cost != 0 {
-					if _, ok := people[name]; ok {
-						people[name] = people[name] + cost
-					} else {
-						people[name] = cost
-					}
+			}
+			if !reflect.ValueOf(record.PaidBy).IsZero() && !reflect.ValueOf(record.Amount).IsZero() {
+				if _, ok := people[record.PaidBy]; ok {
+					people[record.PaidBy] = people[record.PaidBy] + record.Amount
+				} else {
+					people[record.PaidBy] = record.Amount
 				}
 			}
+			slog.Info(fmt.Sprintf("Record %d: %+v\n", i+1, record))
 		}
 		fmt.Println(people)
 	}
