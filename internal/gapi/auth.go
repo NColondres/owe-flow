@@ -101,12 +101,17 @@ func removeCharacters(input string, characters string) string {
 func validateSheetFields(valueRange *sheets.ValueRange) bool {
 	firstRow := valueRange.Values[0]
 	slog.Info(fmt.Sprintf("First Row in sheet: %+v\n", firstRow))
-
-	for _, value := range firstRow {
-		if !slices.Contains(requiredFields, value.(string)) {
-			log_string := fmt.Sprintf("%q is not an expected field", value)
-			slog.Error(log_string)
-			return false
+	for i, value := range firstRow {
+		if i < len(requiredFields) {
+			if !slices.Contains(requiredFields, value.(string)) {
+				log_string := fmt.Sprintf("%q is not an expected field", value)
+				slog.Error(log_string)
+				return false
+			}
+		} else {
+			// We don't need to care about any other colums
+			// We just want to validate the colums matching requiredFields
+			break
 		}
 	}
 	slog.Info("Validation successful")
@@ -155,40 +160,44 @@ func ReadSheed() {
 		for i, row := range resp.Values[1:] {
 			record := Record{}
 			for i, value := range row {
-				switch v := value.(type) {
-				case string:
-					if i == topRowFields["Amount"] {
-						newstr := removeCharacters(v, "$")
-						if s, err := strconv.ParseFloat(newstr, 32); err == nil {
-							record.Amount = float32(s)
+				if i < len(requiredFields) {
+					switch v := value.(type) {
+					case string:
+						if i == topRowFields["Amount"] {
+							newstr := removeCharacters(v, "$")
+							if s, err := strconv.ParseFloat(newstr, 32); err == nil {
+								record.Amount = float32(s)
+							}
 						}
-					}
-					if i == topRowFields["Paid By"] {
-						record.PaidBy = v
-					}
+						if i == topRowFields["Paid By"] {
+							record.PaidBy = v
+						}
 
-					if i == topRowFields["Split Between"] {
-						record.SplitBetween = strings.Split(v, ",")
-					}
+						if i == topRowFields["Split Between"] {
+							record.SplitBetween = strings.Split(v, ",")
+						}
 
-					if i == topRowFields["Date"] {
-						record.Date, _ = time.Parse("1/2/2006", v)
-					}
+						if i == topRowFields["Date"] {
+							record.Date, _ = time.Parse("1/2/2006", v)
+						}
 
-				case float64:
-					if i == topRowFields["Amount"] {
-						record.Amount = float32(v)
+					case float64:
+						if i == topRowFields["Amount"] {
+							record.Amount = float32(v)
+						}
+					case float32:
+						if i == topRowFields["Amount"] {
+							record.Amount = v
+						}
+					case bool:
+						fmt.Println("Boolean:", v)
+					case nil:
+						fmt.Println("Empty cell")
+					default:
+						fmt.Println("Unknown type:", v)
 					}
-				case float32:
-					if i == topRowFields["Amount"] {
-						record.Amount = v
-					}
-				case bool:
-					fmt.Println("Boolean:", v)
-				case nil:
-					fmt.Println("Empty cell")
-				default:
-					fmt.Println("Unknown type:", v)
+				} else {
+					break
 				}
 			}
 			if !reflect.ValueOf(record.PaidBy).IsZero() && !reflect.ValueOf(record.Amount).IsZero() {
@@ -201,5 +210,77 @@ func ReadSheed() {
 			slog.Info(fmt.Sprintf("Record %d: %+v\n", i+1, record))
 		}
 		fmt.Println(people)
+		postOwes(srv, calculateCosts())
 	}
+}
+
+// Function to figure out who paid the most money
+
+func findWhoPaidTheMost() string {
+	largestVal := float32(0)
+	var doesntOwe string
+	for p, s := range people {
+		if s > largestVal {
+			largestVal = s
+			doesntOwe = p
+		}
+	}
+	return doesntOwe
+}
+
+// Function to figure out who owes the person that paid the most
+func calculateCosts() [][]interface{} {
+	TotalSpent := float32(0)
+	for _, s := range people {
+		TotalSpent += s
+
+	}
+
+	e := [][]interface{}{
+		{"Person", "Pay Amount"},
+	}
+	//////////////////////////////////////////
+	numberOfPeople := len(people)
+	individualShare := TotalSpent / float32(numberOfPeople)
+	if numberOfPeople > 2 {
+		for name, contribution := range people {
+			netAmount := individualShare - contribution
+			if netAmount > 0 {
+				e = append(e, []interface{}{name, netAmount})
+				slog.Info(fmt.Sprintf("%s owes $%.2f\n", name, netAmount))
+			} else if netAmount < 0 {
+				slog.Info(fmt.Sprintf("%s is owed $%.2f\n", name, -netAmount))
+			} else {
+				slog.Info(fmt.Sprintf("%s has no balance\n", name))
+			}
+		}
+	} else if numberOfPeople == 1 {
+		slog.Info("There is only one person found on the sheet. Nothing to calculate")
+	} else {
+		bigSpender := findWhoPaidTheMost()
+		for p, v := range people {
+			if p == bigSpender {
+				continue
+			}
+			owe := people[bigSpender] - v
+			e = append(e, []interface{}{p, owe})
+		}
+
+	}
+
+	return e
+
+}
+
+// Function to post the amount owed by people
+func postOwes(srv *sheets.Service, owed [][]interface{}) {
+	writeRange := "Sheet1!H1"
+	valueRange := &sheets.ValueRange{
+		Values: owed,
+	}
+	_, err := srv.Spreadsheets.Values.Update(spreadsheetId, writeRange, valueRange).ValueInputOption("USER_ENTERED").Do()
+	if err != nil {
+		log.Fatalf("Unable to write data to sheet: %v", err)
+	}
+
 }
