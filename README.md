@@ -29,7 +29,11 @@ Subject to change.
 
 ## ToDo
 
-- [ ] Create a test Google Sheet
-- [ ] Research how to get API access to the Google Sheet (Google Sheets API + service account)
-- [ ] Write a simple “Hello World” in Go that reads some dummy data from the test sheet
+- [x] Create a test Google Sheet
+- [x] Research how to get API access to the Google Sheet (Google Sheets API + service account)
+- [x] Write a simple “Hello World” in Go that reads some dummy data from the test sheet
 - [ ] Test the ability to make a new sheet once the current sheet is "processed"
+- [ ] Figure out how to add color to the top row of the sheet (optional).
+- [x] Remove SplitBetween column and logic. We should just even split by everyone found in `PaidBy` column
+- [ ] Fix `calculateCosts()` to use the `PayTo` column no matter how many people need to pay.
+- [ ] Break up `ReadSheed()` into separate functions that we can write unit test for
