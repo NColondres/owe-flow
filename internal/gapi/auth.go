@@ -30,15 +30,14 @@ var (
 	Jfile          = getEnvVar("SVC_PATH")
 	spreadsheetId  = getEnvVar("GSHEET")
 	people         = make(map[string]float32)
-	requiredFields = []string{"Date", "Description", "Amount", "Paid By", "Split Between"}
+	requiredFields = []string{"Date", "Description", "Amount", "Paid By"}
 )
 
 type Record struct {
-	Date         time.Time
-	Description  string
-	Amount       float32
-	PaidBy       string
-	SplitBetween []string
+	Date        time.Time
+	Description string
+	Amount      float32
+	PaidBy      string
 }
 
 // Function to read the service account json cred file
@@ -95,7 +94,7 @@ func removeCharacters(input string, characters string) string {
 	return strings.Map(filter, input)
 }
 
-// Function that gets the top row of a spreadsheet. Validates that is has the 5 values in it. [Date, Description, Amount, Paid By, Split Between]
+// Function that gets the top row of a spreadsheet. Validates that is has the 5 values in it. [Date, Description, Amount, Paid By]
 // Throw error if sheet is not to the desired specification.
 
 func validateSheetFields(valueRange *sheets.ValueRange) bool {
@@ -173,10 +172,6 @@ func ReadSheed() {
 							record.PaidBy = v
 						}
 
-						if i == topRowFields["Split Between"] {
-							record.SplitBetween = strings.Split(v, ",")
-						}
-
 						if i == topRowFields["Date"] {
 							record.Date, _ = time.Parse("1/2/2006", v)
 						}
@@ -230,24 +225,25 @@ func findWhoPaidTheMost() string {
 
 // Function to figure out who owes the person that paid the most
 func calculateCosts() [][]interface{} {
+	bigSpender := findWhoPaidTheMost()
 	TotalSpent := float32(0)
 	for _, s := range people {
 		TotalSpent += s
-
 	}
 
 	e := [][]interface{}{
-		{"Person", "Pay Amount"},
+		{"Person", "Pay Amount", "Pay To"},
 	}
 	//////////////////////////////////////////
 	numberOfPeople := len(people)
 	individualShare := TotalSpent / float32(numberOfPeople)
-	if numberOfPeople > 2 {
+	slog.Info(fmt.Sprintln("Total Spent:", TotalSpent, "Individual Share:", individualShare))
+	if numberOfPeople > 1 {
 		for name, contribution := range people {
 			netAmount := individualShare - contribution
 			if netAmount > 0 {
-				e = append(e, []interface{}{name, netAmount})
-				slog.Info(fmt.Sprintf("%s owes $%.2f\n", name, netAmount))
+				e = append(e, []interface{}{name, netAmount, bigSpender})
+				slog.Info(fmt.Sprintf("%s owes $%.2f to %s\n", name, netAmount, bigSpender))
 			} else if netAmount < 0 {
 				slog.Info(fmt.Sprintf("%s is owed $%.2f\n", name, -netAmount))
 			} else {
@@ -256,20 +252,9 @@ func calculateCosts() [][]interface{} {
 		}
 	} else if numberOfPeople == 1 {
 		slog.Info("There is only one person found on the sheet. Nothing to calculate")
-	} else {
-		bigSpender := findWhoPaidTheMost()
-		for p, v := range people {
-			if p == bigSpender {
-				continue
-			}
-			owe := people[bigSpender] - v
-			e = append(e, []interface{}{p, owe})
-		}
-
 	}
 
 	return e
-
 }
 
 // Function to post the amount owed by people
@@ -282,5 +267,4 @@ func postOwes(srv *sheets.Service, owed [][]interface{}) {
 	if err != nil {
 		log.Fatalf("Unable to write data to sheet: %v", err)
 	}
-
 }
